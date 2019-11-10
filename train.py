@@ -3,9 +3,10 @@ import json
 import time 
 
 import torch 
-from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 from torch.nn.functional import mse_loss
+from torchvision import datasets, transforms
+from torchvision.utils import make_grid
 from tensorboardX import SummaryWriter
 
 from model import Generator, Discriminator
@@ -39,13 +40,14 @@ class Trainer():
         self.writer = SummaryWriter(self.result_dir)
         
         # Dataset 
-        # TODO: Find mean and standard deviation of dataset
+        # TODO: Find mean and standard deviation of dataset [0, 1]
         dataset = datasets.ImageFolder(
             root = self.opt.data_dir,
             transform = transforms.Compose([
-                transforms.ToTensor(),
+                transforms.Grayscale(num_output_channels=1),
                 transforms.Resize(self.opt.im_size),
-                transforms.Normalize(0.5, 0.5),
+                transforms.ToTensor(),
+                # transforms.Normalize(0.5, 0.5),
         ]))
 
         self.dataloader = DataLoader(dataset, batch_size=self.opt.batch_size,
@@ -54,7 +56,7 @@ class Trainer():
         # Models
         self.generator = Generator(self.opt).to(self.device)
         self.discriminator = Discriminator(self.opt).to(self.device)
-        if self.opt.weights_folder is not None:
+        if self.opt.weights_dir is not None:
             self.load_model()
 
         # Optimizer
@@ -66,18 +68,27 @@ class Trainer():
         """
         Main training loop function for class.
         """
+        val_latent = torch.randn(self.opt.batch_size, self.opt.latent_size, 1, 1).to(self.device)
+
         for self.epoch in range(self.opt.num_epochs):
-            for batch_idx, inputs in enumerate(self.dataloader):
+            # Train on dataset 
+            for _, (inputs, _) in enumerate(self.dataloader):
                 self.process_batch(inputs)
                 self.step += 1
 
-            # Save model
             if (self.epoch + 1) % self.opt.save_frequency:
+                # Save weights
                 save_epoch_dir = os.path.join(self.results_dir, "weights_" + str(self.epoch).zfill(3))
                 torch.save(self.gen.state_dict(), os.path.join(save_epoch_dir, "gen.pth"))
                 torch.save(self.disc.state_dict(), os.path.join(save_epoch_dir, "disc.pth"))
                 torch.save(self.optimizer.state_dict(), os.path.join(save_epoch_dir, "adam.pth"))
 
+                # Log validation image
+                with torch.no_grad():
+                    val_image = make_grid(self.generator(val_latent), nrow=1)
+                    self.writer.add_image('generated image', val_image, self.step)
+            
+            print("Training complete.")
     
     def process_batch(self, inputs):
         """
@@ -85,12 +96,14 @@ class Trainer():
         """
         # Forward pass 
         real_images = inputs.to(self.device)
-        fake_latent = torch.randn(self.opt.batch_size, self.opt.latent_size).to(self.device)
-        fake_images = self.generator(fake_latent)         
+        fake_latent = torch.randn(self.opt.batch_size, self.opt.latent_size, 1, 1).to(self.device)
+        fake_images = self.generator(fake_latent)  
+        real_logits = self.discriminator(real_images)
+        fake_logits = self.discriminator(fake_images)       
 
         # Compute losses
-        gen_loss = self.compute_generator_loss(real_images, fake_images)
-        disc_loss = self.compute_discriminator_loss(real_logits, fake_logits)
+        gen_loss = self.compute_generator_loss(fake_logits)
+        disc_loss = self.compute_discriminator_loss(real_logits, fake_logits, real_images, fake_images)
 
         # Optimizer step
         self.gen_optimizer.zero_grad()
@@ -103,7 +116,8 @@ class Trainer():
 
         # Logging
         if (self.step + 1) % self.opt.log_frequency == 0:
-            self.log(losses)
+            self.writer.add_scalar(gen_loss, "generator loss", self.step)
+            self.writer.add_scalar(disc_loss, "discriminator loss", self.step)
 
     
     def compute_generator_loss(self, fake_logits):
@@ -114,75 +128,35 @@ class Trainer():
         return loss 
     
     
-    def compute_discriminator_loss(self, real_logits, fake_logits):
+    def compute_discriminator_loss(self, real_images, fake_images, real_logits, fake_logits, reg_lambda=10):
         """
         Discriminator WGAN-GP Loss.
         """
-        # Wasserstein loss
-        loss = (torch.mean(fake_logits) - torch.mean(real_logits)
+        # Wasserstein loss ---
+        loss = (torch.mean(fake_logits) - torch.mean(real_logits))
 
-        # Gradient penalty
-        
-
-        # Add small term to keep discriminator output from drifting too far away from zero
-        loss += self.opt.disc_drift * th.mean(real_logits ** 2))
-
-        return loss
-
-    
-
-
-    def __gradient_penalty(self, real_samps, fake_samps,
-                           height, alpha, reg_lambda=10):
-        """
-        private helper for calculating the gradient penalty
-        :param real_samps: real samples
-        :param fake_samps: fake samples
-        :param height: current depth in the optimization
-        :param alpha: current alpha for fade-in
-        :param reg_lambda: regularisation lambda
-        :return: tensor (gradient penalty)
-        """
-        batch_size = real_samps.shape[0]
-
-        # generate random epsilon
-        epsilon = th.rand((batch_size, 1, 1, 1)).to(fake_samps.device)
-
+        # Gradient penalty ----
         # create the merge of both real and fake samples
-        merged = epsilon * real_samps + ((1 - epsilon) * fake_samps)
+        epsilon = torch.rand((self.opt.batch_size, 1, 1, 1)).to(self.device)
+        merged = epsilon * real_images + ((1 - epsilon) * fake_images)
         merged.requires_grad_(True)
 
         # forward pass
-        op = self.dis(merged, height, alpha)
+        op = self.discriminator(merged)
 
         # perform backward pass from op to merged for obtaining the gradients
-        gradient = th.autograd.grad(outputs=op, inputs=merged,
-                                    grad_outputs=th.ones_like(op), create_graph=True,
-                                    retain_graph=True, only_inputs=True)[0]
+        gradient = torch.autograd.grad(outputs=op, inputs=merged, grad_outputs=torch.ones_like(op), 
+                                    create_graph=True, retain_graph=True)[0]
 
         # calculate the penalty using these gradients
         gradient = gradient.view(gradient.shape[0], -1)
         penalty = reg_lambda * ((gradient.norm(p=2, dim=1) - 1) ** 2).mean()
+        loss += penalty
 
-        # return the calculated penalty:
-        return penalty
-
-    def dis_loss(self, real_samps, fake_samps, height, alpha):
-
-
-    def gen_loss(self, _, fake_samps, height, alpha):
-        # calculate the WGAN loss for generator
-        loss = -th.mean(self.dis(fake_samps, height, alpha))
+        # Add small term to keep discriminator output from drifting too far away from zero ---
+        loss += self.opt.disc_drift * th.mean(real_logits ** 2)
 
         return loss
-
-    def log(self, losses):
-        """
-        Write logging statements to the Tensorboard file.
-        """
-        for l, v in losses.items():
-            self.writer.add_scalar(l, v, self.step)
-            # TODO: Add sampled image, reconstructed image to writer
 
 
     def load_model(self):

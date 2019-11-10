@@ -2,7 +2,7 @@
 Using Generative Adversarial Networks (GANs) to produce awesome looking fantasy maps
 
 ## Overview
-Inspired by Progressive Growing of GANs paper, but heavily modified and simplified for my project.
+Inspired by Progressive Growing of GANs paper, but modified extensively for this use case. Utilizes a progressively growing architecture, WGAN-GP loss, to generate 512x512 fantasy maps.
 
 ## Running the code
 

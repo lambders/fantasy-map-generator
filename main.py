@@ -31,7 +31,7 @@ parser.add_argument("--weights_dir",
 parser.add_argument("--batch_size",
                     type=int,
                     help="batch size",
-                    default=12)
+                    default=8)
 parser.add_argument("--learning_rate",
                     type=float,
                     help="learning rate",
@@ -49,9 +49,8 @@ parser.add_argument("--num_workers",
                     help="number of workers for the data loading",
                     default=4)
 parser.add_argument("--no_cuda",
-                    type=bool,
                     help="if set, train on cpu instead of gpu",
-                    default=False)
+                    action="store_true")
 
 # NETWORK options
 parser.add_argument("--im_size",
