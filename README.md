@@ -2,7 +2,7 @@
 Using Generative Adversarial Networks (GANs) to produce awesome looking fantasy maps
 
 ## Overview
-
+Inspired by Progressive Growing of GANs paper, but heavily modified and simplified for my project.
 
 ## Running the code
 

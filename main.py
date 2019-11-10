@@ -4,11 +4,11 @@ from sample import Sampler
 
 # ARGPARSER 
 parser = argparse.ArgumentParser(description="fantasy-map-generator options")
-parser.add_argument("mode",
+parser.add_argument("--mode",
                     type=str,
                     help="run the network in train or sample mode",
                     default="train",
-                    chiuces=["train", "sample"])
+                    choices=["train", "sample"])
 
 # DIRECTORY options
 parser.add_argument("--data_dir",
@@ -36,14 +36,32 @@ parser.add_argument("--learning_rate",
                     type=float,
                     help="learning rate",
                     default=1e-4)
+parser.add_argument("--disc_drift",
+                    type=float,
+                    help="small term added to discriminator loss",
+                    default=0.001)
 parser.add_argument("--num_epochs",
                     type=int,
                     help="number of epochs",
                     default=20)
 parser.add_argument("--num_workers",
                     type=int,
-                    help="number of workers for the data loaing",
+                    help="number of workers for the data loading",
                     default=4)
+parser.add_argument("--no_cuda",
+                    type=bool,
+                    help="if set, train on cpu instead of gpu",
+                    default=False)
+
+# NETWORK options
+parser.add_argument("--im_size",
+                    type=int,
+                    help="size of image in pixels",
+                    default=256)
+parser.add_argument("--latent_size",
+                    type=int,
+                    help="size of image in pixels",
+                    default=64)
 
 # LOGGING options
 parser.add_argument("--log_frequency",
