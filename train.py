@@ -106,14 +106,15 @@ class Trainer():
         disc_loss = self.compute_discriminator_loss(real_logits, fake_logits, real_images, fake_images)
 
         # Optimizer step
+        self.disc_optimizer.zero_grad()
+        disc_loss.backward(retain_graph=True)
+        self.disc_optimizer.step()
+
         self.gen_optimizer.zero_grad()
         gen_loss.backward()
         self.gen_optimizer.step()
 
-        self.disc_optimizer.zero_grad()
-        disc_loss.backward()
-        self.disc_optimizer.step()
-
+        print(disc_loss, gen_loss)
         # Logging
         if (self.step + 1) % self.opt.log_frequency == 0:
             self.writer.add_scalar(gen_loss, "generator loss", self.step)
@@ -128,7 +129,7 @@ class Trainer():
         return loss 
     
     
-    def compute_discriminator_loss(self, real_images, fake_images, real_logits, fake_logits, reg_lambda=10):
+    def compute_discriminator_loss(self, real_logits, fake_logits, real_images, fake_images, reg_lambda=10):
         """
         Discriminator WGAN-GP Loss.
         """
@@ -154,7 +155,7 @@ class Trainer():
         loss += penalty
 
         # Add small term to keep discriminator output from drifting too far away from zero ---
-        loss += self.opt.disc_drift * th.mean(real_logits ** 2)
+        loss += self.opt.disc_drift * torch.mean(real_logits ** 2)
 
         return loss
 

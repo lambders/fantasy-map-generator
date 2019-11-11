@@ -3,11 +3,11 @@ import math
 import torch
 from torch.nn import ModuleList, Linear, Conv2d, ConvTranspose2d, AvgPool2d, LeakyReLU
 from torch.nn.functional import interpolate 
-# TODO: Equalized learning rate (skip), pixel_norm for latents (maybe)
 # TODO: Progressive learning (maybe)
 
-class PixelNorm(torch.nn.Module):
 
+
+class PixelNorm(torch.nn.Module):
     def __init__(self):
         super(PixelNorm, self).__init__()
 
@@ -16,46 +16,27 @@ class PixelNorm(torch.nn.Module):
         y = x / y  
         return y
 
-class MinibatchStdDev(torch.nn.Module):
-    """
-    Minibatch standard deviation layer for the discriminator
-    """
 
+class MinibatchStdDev(torch.nn.Module):
     def __init__(self):
-        """
-        derived class constructor
-        """
         super(MinibatchStdDev, self).__init__()
 
     def forward(self, x, alpha=1e-8):
-        """
-        forward pass of the layer
-        :param x: input activation volume
-        :param alpha: small number for numerical stability
-        :return: y => x appended with standard deviation constant map
-        """
         batch_size, _, height, width = x.shape
-
         # [B x C x H x W] Subtract mean over batch.
         y = x - x.mean(dim=0, keepdim=True)
-
         # [1 x C x H x W]  Calc standard deviation over batch
         y = torch.sqrt(y.pow(2.).mean(dim=0, keepdim=False) + alpha)
-
         # [1]  Take average over feature_maps and pixels.
         y = y.mean().view(1, 1, 1, 1)
-
         # [B x 1 x H x W]  Replicate over group and pixels.
         y = y.repeat(batch_size, 1, height, width)
-
         # [B x C x H x W]  Append as new feature_map.
         y = torch.cat([x, y], 1)
-
-        # return the computed values:
         return y
 
-class GeneratorBlock(torch.nn.Module):
 
+class GeneratorBlock(torch.nn.Module):
     def __init__(self, in_channels, out_channels):
         super(GeneratorBlock, self).__init__()
         self.upsample = lambda x: interpolate(x, scale_factor=2)
@@ -70,8 +51,8 @@ class GeneratorBlock(torch.nn.Module):
         y = self.pixelnorm(self.lrelu(self.conv2(y)))
         return y
 
-class DiscriminatorBlock(torch.nn.Module):
 
+class DiscriminatorBlock(torch.nn.Module):
     def __init__(self, in_channels, out_channels):
         super(DiscriminatorBlock, self).__init__()
         self.conv1 = Conv2d(in_channels, in_channels, (3, 3), padding=1)
@@ -84,6 +65,7 @@ class DiscriminatorBlock(torch.nn.Module):
         y = self.lrelu(self.conv2(y))
         y = self.downsample(y)
         return y
+
 
 class Generator(torch.nn.Module):
     def __init__(self, options):
@@ -101,7 +83,6 @@ class Generator(torch.nn.Module):
         self.linear = Linear(1, self.init_size**2)
         self.lrelu = LeakyReLU(0.2)
         self.pixelnorm = PixelNorm()
-        # self.conv1 = Conv2d(self.opt.latent_size, self.opt.latent_size, (3,3))
     
         # Intermediate blocks
         for i in range(self.depth):
@@ -114,7 +95,6 @@ class Generator(torch.nn.Module):
             layer = GeneratorBlock(in_channels, out_channels)
             self.layers.append(layer)
             self.to_im_layers.append(Conv2d(out_channels, 1, (1,1)))
-
 
     def forward(self, x):
         # torch.Size([8, 128, 4, 4])
@@ -137,7 +117,6 @@ class Generator(torch.nn.Module):
         y = self.to_im_layers[-1](y)
         # print(y.shape)
         return y
-
 
 
 class Discriminator(torch.nn.Module):
@@ -171,7 +150,6 @@ class Discriminator(torch.nn.Module):
         self.conv3 = Conv2d(self.opt.latent_size, 1, (1, 1))
         self.lrelu = LeakyReLU(0.2)
 
-    
     def forward(self, x):
         # torch.Size([8, 1, 256, 256])
         # torch.Size([8, 4, 256, 256])
