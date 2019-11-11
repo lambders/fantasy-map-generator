@@ -124,7 +124,7 @@ class Trainer():
         """
         Generator WGAN-GP Loss.
         """
-        loss = -th.mean(fake_logits)
+        loss = -torch.mean(fake_logits)
         return loss 
     
     

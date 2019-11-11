@@ -117,15 +117,14 @@ class Generator(torch.nn.Module):
 
 
     def forward(self, x):
-        # torch.Size([12, 64, 4, 4])
-        # torch.Size([12, 64, 8, 8])
-        # torch.Size([12, 64, 16, 16])
-        # torch.Size([12, 64, 32, 32])
-        # torch.Size([12, 32, 64, 64])
-        # torch.Size([12, 16, 128, 128])
-        # torch.Size([12, 8, 256, 256])
-        # torch.Size([12, 4, 512, 512])
-        # torch.Size([12, 1, 512, 512])
+        # torch.Size([8, 128, 4, 4])
+        # torch.Size([8, 128, 8, 8])
+        # torch.Size([8, 128, 16, 16])
+        # torch.Size([8, 128, 32, 32])
+        # torch.Size([8, 64, 64, 64])
+        # torch.Size([8, 32, 128, 128])
+        # torch.Size([8, 16, 256, 256])
+        # torch.Size([8, 1, 256, 256])
 
         y = self.pixelnorm(self.lrelu(self.linear(x)))
         y = y.reshape([self.opt.batch_size, self.opt.latent_size, 4, 4])
@@ -146,7 +145,8 @@ class Discriminator(torch.nn.Module):
         super(Discriminator, self).__init__()
         self.opt = options
 
-        self.depth = int(math.log2(self.opt.latent_size))
+        self.init_size = 4
+        self.depth = int(math.log2(self.opt.im_size/self.init_size))
 
         # Layer lists 
         self.layers = ModuleList([])
@@ -154,12 +154,12 @@ class Discriminator(torch.nn.Module):
 
         # Intermediate blocks
         for i in range(self.depth):
-            if i > 2:
-                in_channels = int(self.opt.im_size // 2**(i-2))
-                out_channels = int(self.opt.im_size // 2**(i-3))
+            if i >= 1:
+                in_channels = self.opt.im_size // 2**(i+1)
+                out_channels = self.opt.im_size // 2**i
             else:
-                in_channels = self.opt.im_size
-                out_channels = self.opt.im_size
+                in_channels = self.opt.latent_size
+                out_channels = self.opt.latent_size
             layer = DiscriminatorBlock(in_channels, out_channels)
             self.layers.append(layer)
             self.from_im_layers.append(Conv2d(1, in_channels, (1,1)))
@@ -173,29 +173,39 @@ class Discriminator(torch.nn.Module):
 
     
     def forward(self, x):
-        print(len(self.layers))
-        print(x.shape)
-        y = self.from_im_layers[self.depth-1](x)
-        print(y.shape)
-        y = self.layers[self.depth - 1](y)
-        print(y.shape)
+        # torch.Size([8, 1, 256, 256])
+        # torch.Size([8, 4, 256, 256])
+        # torch.Size([8, 8, 128, 128])
+        # torch.Size([8, 16, 64, 64])
+        # torch.Size([8, 32, 32, 32])
+        # torch.Size([8, 64, 16, 16])
+        # torch.Size([8, 128, 8, 8])
+        # torch.Size([8, 128, 4, 4])
+        # torch.Size([8, 129, 4, 4])
+        # torch.Size([8, 128, 4, 4])
+        # torch.Size([8, 128, 1, 1])
+        # torch.Size([8, 1, 1, 1])
+        # torch.Size([8])
+
+        # print(x.shape)
+        y = self.from_im_layers[-1](x)
+        # print(y.shape)
 
         # Intermediate blocks
-        for block in reversed(self.layers[:self.depth - 1]):
+        for block in reversed(self.layers):
             y = block(y)
-            print(y.shape)
+            # print(y.shape)
 
         # Final block
-        print("**********************")
         y = self.batch_discriminator(y)
-        print(y.shape)
+        # print(y.shape)
         y = self.lrelu(self.conv1(y))
-        print(y.shape)
+        # print(y.shape)
         y = self.lrelu(self.conv2(y))
-        print(y.shape)
+        # print(y.shape)
         y = self.conv3(y)
-        print(y.shape)
-        print(y.view(-1).shape)
+        # print(y.shape)
+        # print(y.view(-1).shape)
 
         # Ends in (8, 256, 1, 1) --> (8, 1, 1, 1)
         return y.view(-1)

@@ -60,7 +60,7 @@ parser.add_argument("--im_size",
 parser.add_argument("--latent_size",
                     type=int,
                     help="size of image in pixels",
-                    default=64)
+                    default=128)
 
 # LOGGING options
 parser.add_argument("--log_frequency",
