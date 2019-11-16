@@ -56,11 +56,11 @@ parser.add_argument("--no_cuda",
 parser.add_argument("--im_size",
                     type=int,
                     help="size of image in pixels",
-                    default=256)
+                    default=512)
 parser.add_argument("--latent_size",
                     type=int,
                     help="size of image in pixels",
-                    default=128)
+                    default=256)
 
 # LOGGING options
 parser.add_argument("--log_frequency",

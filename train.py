@@ -15,8 +15,9 @@ from model import Generator, Discriminator
 class Trainer():
     def __init__(self, options):
         """
-        Initialize the instance with models, optimizer, etc.
-        Refer to main.py for a detailed description of the options you can use.
+        Initialize the high-level controller which controls model training.
+        Args:
+            options: Refer to main.py for a detailed description of the options you can use.
         """
         self.opt = options
 
@@ -92,7 +93,9 @@ class Trainer():
     
     def process_batch(self, inputs):
         """
-        Run one training epoch.
+        Run one training batch.
+        Args:
+            inputs: batch of images 
         """
         # Forward pass 
         real_images = inputs.to(self.device)
@@ -114,7 +117,6 @@ class Trainer():
         gen_loss.backward()
         self.gen_optimizer.step()
 
-        print(disc_loss, gen_loss)
         # Logging
         if (self.step + 1) % self.opt.log_frequency == 0:
             self.writer.add_scalar(gen_loss, "generator loss", self.step)
@@ -124,6 +126,8 @@ class Trainer():
     def compute_generator_loss(self, fake_logits):
         """
         Generator WGAN-GP Loss.
+        Args:
+            fake_logits: discriminator output after being fed generator output
         """
         loss = -torch.mean(fake_logits)
         return loss 
@@ -132,6 +136,12 @@ class Trainer():
     def compute_discriminator_loss(self, real_logits, fake_logits, real_images, fake_images, reg_lambda=10):
         """
         Discriminator WGAN-GP Loss.
+        Args:
+            real_logits: discriminator output after being fed dataset images
+            fake_logits: discriminator output after being fed generator output
+            real_images: image batch from dataset
+            fake_images: image batch from generator
+            reg_lambda: penalty regularization term for WGAN-GP Loss
         """
         # Wasserstein loss ---
         loss = (torch.mean(fake_logits) - torch.mean(real_logits))
@@ -161,6 +171,9 @@ class Trainer():
 
 
     def load_model(self):
+        """
+        Loading the weights for the network.
+        """
         # loading main network
         load_path = os.path.join(self.opt.weights_dir, "gen.pth")
         model_dict = torch.load(load_path)
