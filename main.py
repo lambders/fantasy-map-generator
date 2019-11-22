@@ -43,7 +43,7 @@ parser.add_argument("--disc_drift",
 parser.add_argument("--num_epochs",
                     type=int,
                     help="number of epochs",
-                    default=20)
+                    default=100)
 parser.add_argument("--num_workers",
                     type=int,
                     help="number of workers for the data loading",
@@ -66,7 +66,7 @@ parser.add_argument("--latent_size",
 parser.add_argument("--log_frequency",
                     type=int,
                     help="number of batches between each tensorboard log",
-                    default=250)
+                    default=10)
 parser.add_argument("--save_frequency",
                     type=int,
                     help="number of epochs between each save",

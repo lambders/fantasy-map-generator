@@ -1,6 +1,6 @@
 import os 
 import torch 
-from torchvision.utils import save_grid
+from torchvision.utils import save_image
 from model import Generator
 
 
@@ -27,7 +27,7 @@ class Sampler():
         """
         fake_latent = torch.randn(self.opt.batch_size, self.opt.latent_size, 1, 1).to(self.device)
         fake_images = self.generator(fake_latent) 
-        torchvision.utils.save_image(fake_images, 'sample.png', nrow=1)
+        save_image(fake_images, 'sample.png', nrow=1)
 
     def load_model(self):
         """

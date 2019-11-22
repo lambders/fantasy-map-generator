@@ -77,19 +77,22 @@ class Trainer():
                 self.process_batch(inputs)
                 self.step += 1
 
-            if (self.epoch + 1) % self.opt.save_frequency:
+            if (self.epoch + 1) % self.opt.save_frequency == 0:
                 # Save weights
-                save_epoch_dir = os.path.join(self.results_dir, "weights_" + str(self.epoch).zfill(3))
-                torch.save(self.gen.state_dict(), os.path.join(save_epoch_dir, "gen.pth"))
-                torch.save(self.disc.state_dict(), os.path.join(save_epoch_dir, "disc.pth"))
-                torch.save(self.optimizer.state_dict(), os.path.join(save_epoch_dir, "adam.pth"))
+                save_epoch_dir = os.path.join(self.result_dir, "weights_" + str(self.epoch).zfill(3))
+                if not os.path.exists(save_epoch_dir):
+                    os.mkdir(save_epoch_dir)
+                torch.save(self.generator.state_dict(), os.path.join(save_epoch_dir, "gen.pth"))
+                torch.save(self.discriminator.state_dict(), os.path.join(save_epoch_dir, "disc.pth"))
+                torch.save(self.gen_optimizer.state_dict(), os.path.join(save_epoch_dir, "adam_gen.pth"))
+                torch.save(self.disc_optimizer.state_dict(), os.path.join(save_epoch_dir, "adam_disc.pth"))
 
                 # Log validation image
                 with torch.no_grad():
                     val_image = make_grid(self.generator(val_latent), nrow=1)
                     self.writer.add_image('generated image', val_image, self.step)
             
-            print("Training complete.")
+        print("Training complete.")
     
     def process_batch(self, inputs):
         """
@@ -119,8 +122,8 @@ class Trainer():
 
         # Logging
         if (self.step + 1) % self.opt.log_frequency == 0:
-            self.writer.add_scalar(gen_loss, "generator loss", self.step)
-            self.writer.add_scalar(disc_loss, "discriminator loss", self.step)
+            self.writer.add_scalar("generator loss", gen_loss.item(), self.step)
+            self.writer.add_scalar("discriminator loss", disc_loss.item(), self.step)
 
     
     def compute_generator_loss(self, fake_logits):
@@ -184,11 +187,11 @@ class Trainer():
         self.discriminator.load_state_dict(model_dict)
 
         # loading adam state
-        load_path = os.path.join(self.opt.weights_dir, "gen_adam.pth")
+        load_path = os.path.join(self.opt.weights_dir, "adam_gen.pth")
         model_dict = torch.load(load_path)
         self.gen_optimizer.load_state_dict(model_dict)
 
-        load_path = os.path.join(self.opt.weights_dir, "disc_adam.pth")
+        load_path = os.path.join(self.opt.weights_dir, "adam_disc.pth")
         model_dict = torch.load(load_path)
         self.disc_optimizer.load_state_dict(model_dict)
 
