@@ -2,7 +2,7 @@
 Using Generative Adversarial Networks (GANs) to produce awesome looking fantasy maps
 
 ## Overview
-The overall network architecture is inspired by the Progressive Growing of GANs paper, but modified and simplified. The main entrypoint for training is at `main.py`. Run with the `-h` flag if you'd like a detailed overview of the possible command-line options.
+The overall network architecture is inspired by DCGAN, with a few tweaks. The main entrypoint for training is at `main.py`. Run with the `-h` flag if you'd like a detailed overview of the possible command-line options.
 
 Some sample commands:
 ```

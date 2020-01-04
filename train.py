@@ -4,12 +4,11 @@ import time
 
 import torch 
 from torch.utils.data import DataLoader
-from torch.nn.functional import mse_loss
 from torchvision import datasets, transforms
 from torchvision.utils import make_grid
 from tensorboardX import SummaryWriter
 
-from model import Generator, Discriminator
+from model import *
 
 
 class Trainer():
@@ -56,13 +55,20 @@ class Trainer():
         
         # Models
         self.generator = Generator(self.opt).to(self.device)
+        self.generator.apply(weights_init)
         self.discriminator = Discriminator(self.opt).to(self.device)
+        self.discriminator.apply(weights_init)
         if self.opt.weights_dir is not None:
             self.load_model()
 
         # Optimizer
-        self.gen_optimizer = torch.optim.Adam(self.generator.parameters(), self.opt.learning_rate)
-        self.disc_optimizer = torch.optim.Adam(self.discriminator.parameters(), self.opt.learning_rate)
+        self.gen_optimizer = torch.optim.Adam(self.generator.parameters(), lr=self.opt.learning_rate, betas=(0.5, 0.999))
+        self.disc_optimizer = torch.optim.Adam(self.discriminator.parameters(), lr=self.opt.learning_rate, betas=(0.5, 0.999))
+
+        # Labels
+        self.bce_loss = torch.nn.BCELoss()
+        self.real_labels = torch.ones(self.opt.batch_size)
+        self.fake_labels = torch.zeros(self.opt.batch_size)
             
    
     def train(self):
@@ -99,78 +105,41 @@ class Trainer():
         Run one training batch.
         Args:
             inputs: batch of images 
-        """
-        # Forward pass 
+        """      
+        # Discriminator step - real
+        self.disc_optimizer.zero_grad()
         real_images = inputs.to(self.device)
+        real_logits = self.discriminator(real_images)
+        disc_loss_real = self.bce_loss(real_logits, self.real_labels)
+        disc_loss_real.backward()
+        D_x = real_logits.mean().item()
+
+        # Discriminator step - fake
         fake_latent = torch.randn(self.opt.batch_size, self.opt.latent_size, 1, 1).to(self.device)
         fake_images = self.generator(fake_latent)  
-        real_logits = self.discriminator(real_images)
-        fake_logits = self.discriminator(fake_images)       
-
-        # Compute losses
-        gen_loss = self.compute_generator_loss(fake_logits)
-        disc_loss = self.compute_discriminator_loss(real_logits, fake_logits, real_images, fake_images)
-
-        # Optimizer step
-        self.disc_optimizer.zero_grad()
-        disc_loss.backward(retain_graph=True)
+        fake_logits = self.discriminator(fake_images.detach())
+        disc_loss_fake = self.bce_loss(fake_logits, self.fake_labels)
+        disc_loss_fake.backward()
+        D_G_z1 = fake_logits.mean().item()
+        disc_loss = disc_loss_real + disc_loss_fake
         self.disc_optimizer.step()
 
+        # Generator step
         self.gen_optimizer.zero_grad()
+        fake_logits = self.discriminator(fake_images)
+        gen_loss = self.bce_loss(fake_logits, fake_labels)
         gen_loss.backward()
+        D_G_z2 = fake_logits.mean().item()
         self.gen_optimizer.step()
 
         # Logging
         if (self.step + 1) % self.opt.log_frequency == 0:
             self.writer.add_scalar("generator loss", gen_loss.item(), self.step)
             self.writer.add_scalar("discriminator loss", disc_loss.item(), self.step)
-
-    
-    def compute_generator_loss(self, fake_logits):
-        """
-        Generator WGAN-GP Loss.
-        Args:
-            fake_logits: discriminator output after being fed generator output
-        """
-        loss = -torch.mean(fake_logits)
-        return loss 
-    
-    
-    def compute_discriminator_loss(self, real_logits, fake_logits, real_images, fake_images, reg_lambda=10):
-        """
-        Discriminator WGAN-GP Loss.
-        Args:
-            real_logits: discriminator output after being fed dataset images
-            fake_logits: discriminator output after being fed generator output
-            real_images: image batch from dataset
-            fake_images: image batch from generator
-            reg_lambda: penalty regularization term for WGAN-GP Loss
-        """
-        # Wasserstein loss ---
-        loss = (torch.mean(fake_logits) - torch.mean(real_logits))
-
-        # Gradient penalty ----
-        # create the merge of both real and fake samples
-        epsilon = torch.rand((self.opt.batch_size, 1, 1, 1)).to(self.device)
-        merged = epsilon * real_images + ((1 - epsilon) * fake_images)
-        merged.requires_grad_(True)
-
-        # forward pass
-        op = self.discriminator(merged)
-
-        # perform backward pass from op to merged for obtaining the gradients
-        gradient = torch.autograd.grad(outputs=op, inputs=merged, grad_outputs=torch.ones_like(op), 
-                                    create_graph=True, retain_graph=True)[0]
-
-        # calculate the penalty using these gradients
-        gradient = gradient.view(gradient.shape[0], -1)
-        penalty = reg_lambda * ((gradient.norm(p=2, dim=1) - 1) ** 2).mean()
-        loss += penalty
-
-        # Add small term to keep discriminator output from drifting too far away from zero ---
-        loss += self.opt.disc_drift * torch.mean(real_logits ** 2)
-
-        return loss
+            self.writer.add_scalar("D(x)", D_x, self.step)
+            self.writer.add_scalar("D(G(z1))", D_G_z1, self.step)
+            self.writer.add_scalar("D(G(z2))", D_G_z2, self.step)
+        print(gen_loss.item(), disc_loss.item())
 
 
     def load_model(self):

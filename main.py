@@ -36,10 +36,6 @@ parser.add_argument("--learning_rate",
                     type=float,
                     help="learning rate",
                     default=1e-4)
-parser.add_argument("--disc_drift",
-                    type=float,
-                    help="small term added to discriminator loss",
-                    default=0.001)
 parser.add_argument("--num_epochs",
                     type=int,
                     help="number of epochs",
@@ -56,11 +52,15 @@ parser.add_argument("--no_cuda",
 parser.add_argument("--im_size",
                     type=int,
                     help="size of image in pixels",
-                    default=512)
+                    default=256)
 parser.add_argument("--latent_size",
                     type=int,
                     help="size of image in pixels",
-                    default=256)
+                    default=512)
+parser.add_argument("--base_num_filters",
+                    type=int,
+                    help="base number of filters",
+                    default=4)
 
 # LOGGING options
 parser.add_argument("--log_frequency",
