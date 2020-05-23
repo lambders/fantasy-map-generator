@@ -31,15 +31,19 @@ parser.add_argument("--weights_dir",
 parser.add_argument("--batch_size",
                     type=int,
                     help="batch size",
-                    default=8)
+                    default=16)
 parser.add_argument("--learning_rate",
                     type=float,
                     help="learning rate",
-                    default=1e-4)
+                    default=2e-4)
 parser.add_argument("--num_epochs",
                     type=int,
                     help="number of epochs",
                     default=100)
+parser.add_argument("--gradient_penalty_weight",
+                    type=float,
+                    help="gradient penalty weight",
+                    default=10)
 parser.add_argument("--num_workers",
                     type=int,
                     help="number of workers for the data loading",
@@ -52,14 +56,14 @@ parser.add_argument("--no_cuda",
 parser.add_argument("--im_size",
                     type=int,
                     help="size of image in pixels",
-                    default=256)
+                    default=128)
 parser.add_argument("--latent_size",
                     type=int,
                     help="size of image in pixels",
-                    default=512)
-parser.add_argument("--base_num_filters",
+                    default=256)
+parser.add_argument("--num_blocks",
                     type=int,
-                    help="base number of filters",
+                    help="number of convolutional blocks",
                     default=4)
 
 # LOGGING options
