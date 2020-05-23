@@ -71,8 +71,6 @@ class Trainer():
         """
         Main training loop function for class.
         """
-        val_latent = torch.randn(self.opt.batch_size, self.opt.latent_size, 1, 1).to(self.device)
-
         for self.epoch in range(self.opt.num_epochs):
             for _, (inputs, _) in enumerate(self.dataloader):
                 # Train
@@ -97,12 +95,14 @@ class Trainer():
                 torch.save(self.gen_optimizer.state_dict(), os.path.join(save_epoch_dir, "adam_gen.pth"))
                 torch.save(self.disc_optimizer.state_dict(), os.path.join(save_epoch_dir, "adam_disc.pth"))
 
-                # Log validation image
+                # Log sample image
                 with torch.no_grad():
-                    val_image = make_grid(self.gen(val_latent), nrow=1)
+                    x = self.sample()
+                    val_image = make_grid(x, nrow=1)
                     self.writer.add_image('generated image', val_image, self.step)
             
         print("Training complete.")
+
     
     def train_discriminator(self, x_real):
 
@@ -117,16 +117,15 @@ class Trainer():
         loss_fake = self.bce_loss(logit_fake, torch.zeros_like(logit_fake))
 
         # Sample for gradient penalty
-        # x = sample_fns[sample_mode](real, fake).detach()
-        fake = x_real + 0.5 * x_real.std() * torch.rand_like(x_real)
+        x_real_perturb = x_real + 0.5 * x_real.std() * torch.rand_like(x_real)
         alpha = torch.rand([self.opt.batch_size, 1, 1, 1])
-        x = x_real + alpha * (fake - x_real)
-        x = x.detach()
-        x.requires_grad = True
+        interp = x_real + alpha * (x_real_perturb - x_real)
+        interp = interp.detach()
+        interp.requires_grad = True
 
         # Calculate gradient penalty
-        logit_x = self.disc(x)
-        grad = torch.autograd.grad(logit_x, x, grad_outputs=torch.ones_like(logit_x), create_graph=True)[0]
+        logit_interp = self.disc(interp)
+        grad = torch.autograd.grad(logit_interp, interp, grad_outputs=torch.ones_like(logit_interp), create_graph=True)[0]
         norm = grad.view(grad.size(0), -1).norm(p=2, dim=1)
         gp = ((norm - 1)**2).mean()
 
@@ -154,6 +153,13 @@ class Trainer():
         self.gen_optimizer.step()
 
         return loss
+    
+
+    def sample():
+        z = torch.randn(self.opt.batch_size, self.opt.latent_size, 1, 1).to(self.device)
+        with torch.no_grad():
+            x_fake = self.gen(z)
+        return x_fake
 
 
     def load_model(self):
