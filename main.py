@@ -4,14 +4,38 @@ import argparse
 import torch
 from torch.utils.tensorboard import SummaryWriter
 import torchvision.transforms as tvt 
-from torchvision.utils import make_grid
+from torchvision.utils import make_grid, save_image
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
-def train(data_dir: str,
-          load_dir: str, save_dir: str, 
+from model import FantasyMapGAN, Decoder
+
+
+
+def train(data_dir: str, load_dir: str, save_dir: str, 
           num_epochs: int, batch_size: int, lr: float, 
           use_gpu: bool):
+    '''
+    Train the SpriteGAN.
+    Saves checkpoints and training logs to `save_dir`.
+
+    Parameters
+    ----------
+    data_dir: str
+        folder path to training data
+    load_dir: str
+        folder to load network weights from
+    save_dir: str
+        folder to save network weights to
+    num_epochs: int
+        number of epochs to train the network
+    batch_size: int
+        batch size for each network update step
+    lr: float
+        learning rate for generator, discriminator will have learning rate lr/2
+    use_gpu: bool
+        Set to true to run training on GPU, otherwise run on CPU
+    '''
     # Dataloader
     dataset = datasets.ImageFolder(
         root = data_dir,
@@ -20,7 +44,6 @@ def train(data_dir: str,
             transforms.Resize(128),
             transforms.ToTensor(),
         ]))
-
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=8, drop_last=True)
 
     # Writer
@@ -29,10 +52,7 @@ def train(data_dir: str,
     writer = SummaryWriter(save_dir)
 
     # Network
-    from model import FantasyMapGAN
-    map_gan = FantasyMapGAN(lr, batch_size)
-    if use_gpu:
-        map_gan = map_gan.cuda()
+    map_gan = FantasyMapGAN(lr, batch_size, use_gpu)
 
     # Train
     step = 0
@@ -69,8 +89,39 @@ def train(data_dir: str,
                 writer.add_image('image/orig', orig_image, epoch)
 
 
-def test(root_dir, csv_file, load_dir):
-    return
+def sample(load_dir: str, save_dir: str, use_gpu: bool) -> None:
+    '''
+    Sample the FantasyMapGAN for new maps.
+    Saves the generated images to `save_dir`.
+
+    Parameters
+    ----------
+    load_dir: str
+        folder to load network weights from
+    save_dir: str
+        folder to save network weights to
+    use_gpu: bool
+        Set to true to run training on GPU, otherwise run on CPU
+    '''
+    # Network
+    model = Decoder()
+    model = model.eval()
+    if use_gpu:
+        model = model.cuda()
+    if load_dir:
+        fs = glob(os.path.join(load_dir, '*_dec.pth'))
+        fs.sort(key=os.path.getmtime)
+        model.load_state_dict(torch.load(fs[-1]))
+    
+    # Generate
+    z = torch.randn((1, model.latent_dim))
+    x = model.forward(z)
+
+    # Save
+    save_path = os.path.join(save_dir, str(uuid.uuid1()) + '.png')
+    save_image(x.squeeze(), save_path)
+
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="fantasy-map-generator options")
@@ -110,8 +161,9 @@ if __name__ == '__main__':
                         help="if set, train on gpu instead of cpu",
                         action="store_true")
 
+    # Train or sample!
     options = parser.parse_args()
     if options.mode == 'train':
         train(options.data_dir, options.load_dir, options.save_dir, options.num_epochs, options.batch_size, options.learning_rate, options.use_gpu)
     elif options.mode == 'sample':
-        sample()
+        sample(options.load_dir, options.save_dir, options.use_gpu)

@@ -3,6 +3,8 @@ Networks for the map generator.
 '''
 import os
 from glob import glob
+import typing 
+
 import torch
 from torch import nn
 from torch.autograd import Variable
@@ -13,7 +15,8 @@ from torch.nn.utils import spectral_norm
 
 class FantasyMapGAN(nn.Module):
 
-    def __init__(self, lr: float, batch_size: int, ngf: int = 64, ndf: int = 64, latent_dim: int = 100):
+    def __init__(self, lr: float, batch_size: int, use_gpu: bool,
+                 ngf: int = 64, ndf: int = 64, latent_dim: int = 100):
         '''
         Fantasy map generator. 
         A combination of a conditional variational autoencoder (for stability and attribute control) and a GAN (for generation power).
@@ -28,12 +31,13 @@ class FantasyMapGAN(nn.Module):
             number of base filters to be used in the discriminators (ImageDiscriminator and LatentDiscriminator)
         latent_dim: int
             size of latent dimension
-        isTrain: bool
-            set to True if we want to train the network
+        use_gpu: bool
+            Set to true to run training on GPU, otherwise run on CPU
         '''
         super(FantasyMapGAN, self).__init__()
         self.batch_size = batch_size
         self.latent_dim = latent_dim 
+        self.use_gpu = use_gpu
 
         # Networks
         self.encoder = Encoder(ngf, latent_dim)
@@ -41,23 +45,47 @@ class FantasyMapGAN(nn.Module):
         self.disc_image = DiscriminatorImage(ndf)
         self.disc_latent = DiscriminatorLatent(ndf, latent_dim)
 
+        if use_gpu:
+            self.encoder = self.encoder.cuda()
+            self.decoder = self.decoder.cuda()
+            self.disc_image = self.disc_image.cuda()
+            self.disc_latent = self.disc_latent.cuda()
+
         # Optimizers
         self.opt_generator = torch.optim.Adam(list(self.encoder.parameters()) + list(self.decoder.parameters()), lr, betas=(0.5, 0.9))
         self.opt_disc_image = torch.optim.Adam(self.disc_image.parameters(), lr/2, betas=(0.5, 0.9))
         self.opt_disc_latent = torch.optim.Adam(self.disc_latent.parameters(), lr/2, betas=(0.5, 0.9))
 
         # Losses 
-        self.real_label = torch.ones(batch_size).cuda()
-        self.fake_label = torch.zeros(batch_size).cuda()
+        self.real_label = torch.ones(batch_size)
+        self.fake_label = torch.zeros(batch_size)
+
+        if use_gpu:
+            self.real_label = self.real_label.cuda()
+            self.fake_label = self.fake_label.cuda()
     
-    def forward(self, x: torch.Tensor):
+
+    def forward(self, x: torch.Tensor) -> typing.Dict:
+        '''
+        Forward training pass for the FantasyMapGAN network.
+
+        Parameters
+        ----------
+        x: torch.Tensor
+            input image tensor, of size (?, 1, 128, 128)
+
+        Returns
+        -------
+        typing.Dict[str,float]: loss dictionary
+        '''
 
         # Discriminator loss
         self.opt_disc_latent.zero_grad()
         self.opt_disc_image.zero_grad()
 
         z = torch.randn((self.batch_size, self.latent_dim), requires_grad=True)
-        z = z.cuda()
+        if self.use_gpu:
+            z = z.cuda()
 
         with torch.no_grad():
             x_hat = self.decoder(z)
@@ -91,7 +119,8 @@ class FantasyMapGAN(nn.Module):
         self.opt_generator.zero_grad()
 
         z2 = torch.randn((self.batch_size, self.latent_dim), requires_grad=True)
-        z2 = z2.cuda()
+        if self.use_gpu:
+            z2 = z2.cuda()
 
         x_hat = self.decoder(z2)
         z_hat = self.encoder(x)
@@ -126,7 +155,8 @@ class FantasyMapGAN(nn.Module):
         }
         return loss_dict
     
-    def sample(self, batch_size: int):
+
+    def sample(self, batch_size: int) -> torch.Tensor:
         '''
         Sample a map image.
 
@@ -134,6 +164,10 @@ class FantasyMapGAN(nn.Module):
         ----------
         batch_size: int
             batch size of generated sample
+        
+        Returns
+        -------
+        torch.Tensor: generated images, of size (batch_size, 1, 128, 128)
         '''
         with torch.no_grad():
             z = torch.randn((batch_size, self.latent_dim))
@@ -142,7 +176,19 @@ class FantasyMapGAN(nn.Module):
         return x 
     
 
-    def reconstruct(self, x: torch.Tensor):
+    def reconstruct(self, x: torch.Tensor) -> torch.Tensor:
+        '''
+        Perform a reconstruction on a given map x.
+
+        Parameters
+        ----------
+        x: torch.Tensor
+            input image tensor, of size (?, 1, 128, 128)
+
+        Returns
+        -------
+        torch.Tensor: A reconstruction of the input x, of size (?, 1, 128, 128)
+        '''
         z = self.encoder(x)
         x_recon = self.decoder(z)
         return x_recon
@@ -232,6 +278,7 @@ class Encoder(nn.Module):
         )
         self.fc = nn.Linear(8192,latent_dim)
 
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         '''
         Forward pass of encoder.
@@ -239,7 +286,7 @@ class Encoder(nn.Module):
         Parameters
         ----------
         x: torch.Tensor
-            input image, a tensor of shape (?,3,h,w)
+            input image, a tensor of shape (?, 1, 128, 128)
         
         Returns
         -------
@@ -267,9 +314,8 @@ class Decoder(nn.Module):
             size of latent dimension, by default 10
         '''
         super(Decoder,self).__init__()
-        self.num_filters = num_filters
-        self.color_dim = color_dim 
-
+        self.latent_dim = latent_dim
+        
         def color_picker(input_dim: int, output_dim: int):
             '''
             Create and choose from a color palette during map generation.
@@ -293,7 +339,7 @@ class Decoder(nn.Module):
             nn.ReLU(True)
         )
 
-        self.upconv= nn.Sequential( # 6 12 24 48 96
+        self.upconv= nn.Sequential( 
             nn.Conv2d(16*num_filters,8*num_filters,3,1,1),
             nn.BatchNorm2d(8*num_filters),
             nn.ReLU(True),
@@ -328,11 +374,11 @@ class Decoder(nn.Module):
         Parameters
         ----------
         z: torch.Tensor
-            latent input tensor, random noise
+            latent input tensor, shape (?, latent_dim)
         
         Returns
         -------
-        torch.Tensor: generated images
+        torch.Tensor: generated images, shape (?, 1, 128, 128)
         '''
         # Generate 16-channel intermediate image from latent vector
         x = self.fc(z)
@@ -346,8 +392,8 @@ class Decoder(nn.Module):
         r = F.upsample(r, scale_factor=128)
         r = intermediate * r
         r = torch.sum(r, dim=1, keepdim=True) 
-
         return r
+
 
 
 class DiscriminatorImage(nn.Module):
@@ -362,7 +408,6 @@ class DiscriminatorImage(nn.Module):
             base number of filters used, by default 32
         '''
         super(DiscriminatorImage,self).__init__()
-        self.num_filters = num_filters
 
         self.layers = nn.Sequential(
             spectral_norm(nn.Conv2d(1,num_filters,4,2,1)),
@@ -376,12 +421,12 @@ class DiscriminatorImage(nn.Module):
             spectral_norm(nn.Conv2d(num_filters*8,num_filters*8,4,2,1)),
             nn.LeakyReLU()
         )
-
         self.fc = nn.Sequential(
             spectral_norm(nn.Linear(8*4*4*num_filters,1024)),
             nn.LeakyReLU(),
             spectral_norm(nn.Linear(1024,1))
         )
+
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         '''
@@ -390,16 +435,18 @@ class DiscriminatorImage(nn.Module):
         Parameters
         ----------
         x: torch.Tensor
-            input image, a tensor of shape (?, 3, h, w)
+            input image, a tensor of shape (?, 1, 128, 128)
         
         Returns
         -------
         torch.Tensor: real/fake activations, a vector of shape (?,)
         '''
+        batch_size = x.shape[0]
         y = self.layers(x)
-        y = y.view(-1,8*4*4*self.num_filters)
+        y = y.view(batch_size, -1)
         out = self.fc(y)
         return out.squeeze()
+
 
 
 class DiscriminatorLatent(nn.Module):
@@ -427,6 +474,7 @@ class DiscriminatorLatent(nn.Module):
             spectral_norm(nn.Linear(num_filters,1))
         )
     
+
     def forward(self, z: torch.Tensor) -> torch.Tensor:
         '''
         Forward pass of latent discriminator.
